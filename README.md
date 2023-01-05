@@ -1,0 +1,2 @@
+# ComparingActual-PredictedOmicronBC
+I haved added my final report, codebase and presentation slides for the project where I have tried to figure out why there was a large difference between the actual and predicted numbers for Covid infected cases during the Omicron Wave in British Columbia. We set out with two possible explanations, the rapid roll-out of the booster vaccinations and neglecting case importations bloating the initial predicted values.
