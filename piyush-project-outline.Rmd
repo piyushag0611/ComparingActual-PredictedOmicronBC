@@ -1,0 +1,110 @@
+---
+title: "Notes for a modelling project"
+author: "Caroline Colijn"
+date: '2022-12-10'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2) 
+```
+
+## Central question: 
+
+Are time-varying introductions a plausible explanation for the fact that covid-19 models over-estimated the impact of the first Omicron wave? 
+
+## Brief background description 
+
+Many groups used variations of SIR-type models to simulate covid-19 transmission during the pandemic. These models usually have a fixed population, at least on the times scales (months) relevant for covid-19 waves. However, imported cases may have played an important role. 
+
+There is clear evidence of importation: PHAC has data on travel volumes, and ran a border testing program for many months during the pandemics; we know that new variants appeared in BC not long after they originated (could cite my clustering paper with Ben Sobkowiak, and there are other references); genomic epidemiology shows that even with sequences from only a fraction of infections, viral genomes indicate considerable movement both nationally and internationally (cite Jeff Joy's paper in eLife, first author Angela McLaughlin). 
+
+Furthermore, the numbers of imported cases of a variant would not likely have been constant in time. Particularly in time when a new variant was surging worldwide, we can expect the number of importations to surge correspondingly. 
+
+We hypothesized that in models that did not incorporate the time-varying introductions, we might have over-estimated the transmission rate, leading to an over-estimate of the likely size of a wave. The rise of the first omicron wave, in late December in BC, is a good example: cases fell sooner, from a lower peak, and more sharply than we projected. Part of this was due to dramatic changes in testing, but even taking these into account (and to match the serology that was later released), we needed to reduce the transmission rate in the model, in late December 2021, by approximately half. 
+
+In this project, we will use a simple SEIRS (or even SIRS) model to explore the impact of a reasonable time-varying introduction term on the size and shape of the first omicron wave in BC. We will explore whether including time-varying introductions means that the (somewhat artificial) late-December reduction in the transmission rate is no longer necessary to fit the data. 
+
+## BC data 
+
+Download BC reported case data: 
+
+```{r bcdata}
+get_british_columbia_case_data <- function(){
+    path="http://www.bccdc.ca/Health-Info-Site/Documents/BCCDC_COVID19_Dashboard_Case_Details.csv"
+    read_csv(path,col_types=cols(.default="c")) %>%
+       dplyr::rename(`Reported Date`=Reported_Date,`Health Authority`=HA,`Age group`=Age_Group) %>%
+        mutate(`Age group`=recode(`Age group`,"19-Oct"="10-19")) %>%
+        mutate(Reported_Date=as.Date(`Reported Date`,tryFormats = c("%Y-%m-%d", "%m/%d/%Y")))
+}
+dat = get_british_columbia_case_data()
+
+dat <- group_by(dat, Reported_Date) %>%
+    dplyr::summarise(cases = n()) %>%
+    filter(Reported_Date >= ymd("2020-02-27"))
+# still need to patch gaps in the first few days 
+dat$Reported_Date[1:2] <- c(ymd("2020-03-01"), ymd("2020-03-02"))
+
+
+dat <- dat[order(dat$Reported_Date), ]
+
+dat$day <- seq(1, nrow(dat))
+dat$value <- dat$cases
+dat$date <- dat$Reported_Date
+# yes, i realize this is silly code. 
+```
+
+Plot the case data: 
+
+```{r plotcases}
+ggplot(dat, aes(x=date, y=cases))+geom_point(color="blue", alpha=0.5)+theme_light()
+```
+
+## Information for modelling the omicron wave
+
+### Omicron and other variants: timing information 
+When the omicron wave began, delta was declining. On December 12, 2021, about half the cases were omicron. This can help you set up the model. 
+
+
+
+### Testing 
+
+Not all infections were reported as cases. In 2021, we estimate that approximately half the infections were reported cases. By the end of the omicron wave, that had gone down to about 10%. Here is a function that we think is approximately right for modelling the decrease in testing. 
+
+```{r testprop} 
+intro_date <-  ymd("2021-11-30") # approx introduction of omicron, but we don't know how many cases would have been introduced (of course in this project you will explore that more! this is just a date to use to illustrate the testing proportion model we did 
+stop_date <- ymd("2022-03-10")#last(dat$date)# #last date of data   
+x=intro_date+1:as.numeric(stop_date-intro_date)
+testfrac = 0.5*(1 -0.85/(1+exp(-0.2*as.numeric((x - ymd("2021-12-20"))))))
+# tptest = tptest - (0.97-0.67)/(1+exp(-0.2*as.numeric((x - ymd("2022-03-01")))))
+plot(x,testfrac)
+```
+
+The quantity 'testfrac' is the approximate fraction of infections that were reported as cases, to the best of our knowledge. At least for this project you can use it. 
+
+### Vaccination and immunity 
+
+A high fraction of BC were "fully vaccinated" when omicron emerged, but omicon substantially evaded vaccine-induced protection against infection. We still do not really know what fraction of BC was susceptible at the time omicron emerged. But under 10% of BC had had covid by that point, so infection-induced immunity was low. 
+
+You could plausibly assume that 70-90% of BC were susceptible to omicron infection in early -mid December 2021, and that infection-induced immunity against reinfection lasts 6 months or more. (duration of the R class).
+
+You can ignore vaccination during the omicron wave for the purposes of this project. 
+
+## Sketch for some steps for the project.  
+
+(1) Set up an SIRS model with reasonable parameters for covid-19 and the omicron wave in BC. This includes  a duration of infectiousness of about 4-6 days, an initial number of infected individuals that take into account the information above about testing, case numbers and the fact that cases were about 50% omicron on December 12 
+
+(2) Fit the model to the rising case numbers in December 2021. See what the model predicts for the size of the wave. 
+Compare infections in the model NOT to the reported cases, but to the reported cases divided by the testing fraction (because you want to compare infections in the model to infections in the world, and we don't know infections in the world, we just know this approximate guess for them based on testing and reported cases). 
+Alternatively, compare reported cases to 'reportable cases' in the model (namely, infections * testing fraction). This is probably better actually. 
+
+(3) Develop a new SIRS-style model that includes introductions of infectious individuals. Introductions should be plausible. Look at cases of covid-19 in central Canada and elsewhere (the omicron rises were earlier). Model the number of introductions as a function of time, where this number also rises exponentially in Dec 2021. 
+
+(4) now, fit the model (i.e. fit beta) again. 
